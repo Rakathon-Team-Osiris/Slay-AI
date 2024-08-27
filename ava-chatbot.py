@@ -122,21 +122,17 @@ def get_products(query: str):
 
     return products
 
-from langgraph.checkpoint.memory import MemorySaver
-
-memory = MemorySaver()
-
 tools = [get_trends, get_products]
 
-graph = create_react_agent(model, tools=tools, state_modifier = prompt, checkpointer=memory)
+graph = create_react_agent(model, tools=tools, state_modifier = prompt)
 
 def get_answer(query: str):
     def get_stream(stream):
-        last_message = None  # Initialize a variable to store the last message
+        last_message = None  
 
         for s in stream:
             message = s["messages"][-1]
-            last_message = message  # Update the last_message in each iteration
+            last_message = message 
         
         return last_message
 
@@ -153,3 +149,7 @@ def get_answer(query: str):
         ai_message = remove_markdown(ai_message)
 
     return ai_message
+
+
+
+print(get_answer("Ganesh puja is around the corner, show me some kurtas fit for men"))
