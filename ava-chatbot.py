@@ -122,9 +122,13 @@ def get_products(query: str):
 
     return products
 
+from langgraph.checkpoint.memory import MemorySaver
+
+memory = MemorySaver()
+
 tools = [get_trends, get_products]
 
-graph = create_react_agent(model, tools=tools, state_modifier = prompt)
+graph = create_react_agent(model, tools=tools, state_modifier = prompt, checkpointer=memory)
 
 def get_answer(query: str):
     def get_stream(stream):
