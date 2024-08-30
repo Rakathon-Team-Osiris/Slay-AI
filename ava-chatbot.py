@@ -39,7 +39,7 @@ tool = TavilySearchResults(
     include_images=True,
 )
 
-prompt = '''you are a fashion designer and an advisor. while using 'get_products()' function to retrieve products and show them, make sure you provide output in json format as shown below:
+prompt = '''you are a fashion designer and an advisor. while using 'get_products()' function to retrieve products and show them, make sure you provide only the output in json format as shown below:
 [{'product_title': 'sample product title',
     'product images': '[https://url1.com, https://url2.com]',
     'product_brand': 'demo brand',
@@ -174,7 +174,7 @@ def get_answer(text_query: str, image_path=None):
     return ai_message
 start_time = time.time()
 # Example usage
-response = get_answer(text_query="What shirts will look good with this?", image_path="blue pants.jpg")
+response = get_answer(text_query="Which shoes will go well with this for a formal occasion?", image_path="blue pants.jpg")
 
 end_time = time.time()
 
