@@ -9,6 +9,12 @@ from langchain_community.tools import TavilySearchResults
 import sqlite3
 from langchain_core.tools import tool
 from langgraph.prebuilt import create_react_agent
+from langchain.memory import ConversationBufferMemory
+from PIL import Image
+import torch
+from transformers import CLIPProcessor, CLIPModel
+import requests
+import time
 
 load_dotenv()
 
@@ -23,7 +29,7 @@ index = pc.Index("slay-vector-db")
 
 co = cohere.Client(api_key=COHERE_API_KEY)
 
-model = ChatOpenAI(model="gpt-4o")
+model = ChatOpenAI(model="gpt-3.5-turbo")
 
 tool = TavilySearchResults(
     max_results=1,
@@ -33,65 +39,54 @@ tool = TavilySearchResults(
     include_images=True,
 )
 
-prompt = "you are a fashion designer and an advisor. while using 'get_products()' function to retrieve products and show them, make sure you provide output in json format."
+prompt = '''you are a fashion designer and an advisor. while using 'get_products()' function to retrieve products and show them, make sure you provide output in json format as shown below:
+[{'product_title': 'sample product title',
+    'product images': '[https://url1.com, https://url2.com]',
+    'product_brand': 'demo brand',
+    'price': 123}]
+
+
+'''
 connection = sqlite3.connect('fashion_data.db', check_same_thread=False)
 cursor = connection.cursor()
 
+# Load CLIP model and processor
+clip_model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
+clip_processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+
 def extract_json_from_aimessage(ai_message):
-    # The ai_message is already a string, so we work with it directly.
-    
-    # Find the start and end of the JSON block
     start_index = ai_message.find('```json')
     end_index = ai_message.find('```', start_index + 7)
 
-    # Extract the JSON string
     if start_index != -1 and end_index != -1:
         json_str = ai_message[start_index + 7:end_index].strip()
 
-        # Optionally, parse the JSON string to a Python object
         try:
             json_data = json.loads(json_str)
             return json_data
         except json.JSONDecodeError:
-            return None  # Return None if the JSON is invalid
+            return None
     else:
-        return None  # Return None if JSON block is not found
+        return None
 
-    
 def remove_markdown(text):
-    # Remove headers (e.g., ### Header)
     text = re.sub(r'#\s*', '', text)
-    
-    # Remove bold (**text** or __text__)
     text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
     text = re.sub(r'__(.*?)__', r'\1', text)
-    
-    # Remove inline links [text](url)
     text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
-    
-    # Remove unordered list markers (e.g., - or *)
     text = re.sub(r'^\s*[-*]\s+', '', text, flags=re.MULTILINE)
-    
-    # Remove excess newlines
     text = re.sub(r'\n+', '\n', text).strip()
-
-    # Remove list numbers (e.g., 1. 2. 3.)
     text = re.sub(r'\d+\.\s+', '', text)
-    
-    # Remove excess newlines
     text = re.sub(r'\n+', ' ', text).strip()
-    
     return text
 
-
 def get_trends(query):
-    """Use this to get fashion relatated information from the web"""
+    '''Use this function to access internet and get latest data related to fashion'''
     answer = tool.invoke({'query': query})
     return answer
 
 def get_products(query: str):
-    """Use this to retrieve relevant products when asked"""
-    
+    ''' Use this function pull up products from the SQL database to the user. '''
     response = co.embed(
             model='embed-multilingual-v3.0',
             texts=[query],
@@ -102,11 +97,11 @@ def get_products(query: str):
     embedding = response.embeddings.float
 
     result = index.query(
-    vector=embedding,
-    top_k=5,
-    include_values=True,
-    include_metadata=True
-)
+        vector=embedding,
+        top_k=5,
+        include_values=True,
+        include_metadata=True
+    )
 
     ids = []
     for i in range(len(result['matches'])):
@@ -122,34 +117,66 @@ def get_products(query: str):
 
     return products
 
+def describe_image(image_path):
+    # Open the image
+    image = Image.open(image_path)
+    
+    # Preprocess the image
+    inputs = clip_processor(images=image, return_tensors="pt")
+    
+    # Move inputs to the correct device
+    inputs = {k: v.to("cuda" if torch.cuda.is_available() else "cpu") for k, v in inputs.items()}
+    
+    # Get image features
+    with torch.no_grad():
+        image_features = clip_model.get_image_features(**inputs)
+    
+    # You might want to return these features, or further process them
+    return image_features
+
+
 tools = [get_trends, get_products]
 
-graph = create_react_agent(model, tools=tools, state_modifier = prompt)
+memory = ConversationBufferMemory(memory_key="chat_history")
 
-def get_answer(query: str):
+graph = create_react_agent(model, tools=tools, state_modifier=prompt)
+
+def get_answer(text_query: str, image_path=None):
+    if image_path:
+        image_description = describe_image(image_path)
+        combined_query = f"{image_description} {text_query}"
+    else:
+        combined_query = text_query
+
+    inputs = {
+        "messages": [("user", combined_query)],
+        "chat_history": memory.load_memory_variables({})
+    }
+
+    stream = graph.stream(inputs, stream_mode="values")
+
     def get_stream(stream):
         last_message = None  
-
         for s in stream:
             message = s["messages"][-1]
             last_message = message 
-        
         return last_message
 
-    inputs = {"messages": [("user", query)]}
-    ai_message = get_stream(graph.stream(inputs, stream_mode="values")).content
+    ai_message = get_stream(stream).content
 
-
-    # Check if the string contains "json"
     if re.search(r'\bjson\b', ai_message):
-        # If "json" is found
         ai_message = extract_json_from_aimessage(ai_message=ai_message)
     else:
-        # If "json" is not found
         ai_message = remove_markdown(ai_message)
 
+    memory.save_context({"input": combined_query}, {"output": ai_message})
+
     return ai_message
+start_time = time.time()
+# Example usage
+response = get_answer(text_query="What shirts will look good with this?", image_path="blue pants.jpg")
 
+end_time = time.time()
 
-
-print(get_answer("Ganesh puja is around the corner, show me some kurtas fit for men"))
+result_time = end_time-start_time
+print(f'{response} {result_time} secs')
