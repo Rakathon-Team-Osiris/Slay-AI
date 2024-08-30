@@ -74,4 +74,3 @@ def analyze_skin_tone(image_path):
     else:
         print(f"Request failed with status code {response.status_code}")
         return None
-
