@@ -134,6 +134,6 @@ def get_accessories(image_path):
     return json.dumps(products)
 
 
-result = get_accessories(r'C:\Users\Dell\Desktop\Slay-AI\blue pants.jpg')
+# result = get_accessories(r'C:\Users\Dell\Desktop\Slay-AI\blue pants.jpg')
 
-print(result)
+# print(result)

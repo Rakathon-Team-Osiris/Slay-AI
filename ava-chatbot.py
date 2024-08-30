@@ -172,11 +172,11 @@ def get_answer(text_query: str, image_path=None):
     memory.save_context({"input": combined_query}, {"output": ai_message})
 
     return ai_message
-start_time = time.time()
-# Example usage
-response = get_answer(text_query="Which shoes will go well with this for a formal occasion?", image_path="blue pants.jpg")
+# start_time = time.time()
+# # Example usage
+# response = get_answer(text_query="Which shoes will go well with this for a formal occasion?", image_path="blue pants.jpg")
 
-end_time = time.time()
+# end_time = time.time()
 
-result_time = end_time-start_time
-print(f'{response} {result_time} secs')
+# result_time = end_time-start_time
+# print(f'{response} {result_time} secs')
